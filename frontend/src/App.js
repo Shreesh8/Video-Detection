@@ -49,12 +49,7 @@ function App() {
         setActivity(null);
 
         try {
-            // Use environment variable for backend URL
-            const backendUrl = process.env.REACT_APP_BACKEND_URL;
-            if (!backendUrl) {
-                throw new Error("Backend URL not configured. Please set REACT_APP_BACKEND_URL environment variable.");
-            }
-            const response = await axios.post(`${backendUrl}/predict`, formData, {
+            const response = await axios.post('https://video-detection-2.onrender.com/predict', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
