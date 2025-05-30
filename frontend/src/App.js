@@ -49,7 +49,12 @@ function App() {
         setActivity(null);
 
         try {
-            const response = await axios.post('http://localhost:8000/predict', formData, {
+            // Use environment variable for backend URL
+            const backendUrl = process.env.REACT_APP_BACKEND_URL;
+            if (!backendUrl) {
+                throw new Error("Backend URL not configured. Please set REACT_APP_BACKEND_URL environment variable.");
+            }
+            const response = await axios.post(`${backendUrl}/predict`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
