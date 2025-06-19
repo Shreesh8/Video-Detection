@@ -39,6 +39,16 @@ async def startup_event():
         logger.error(f"Error loading model: {str(e)}")
         raise Exception("Failed to load model")
 
+@app.get("/")
+async def root():
+    """Health check endpoint"""
+    return {"message": "Video Object Detection API is running", "status": "healthy"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "model_loaded": model is not None}
+
 def load_model():
     """Get the loaded model"""
     global model
@@ -60,8 +70,8 @@ def validate_video_file(file: UploadFile) -> None:
             detail=f"Invalid file format. Allowed formats: {', '.join(allowed_extensions)}"
         )
 
-def extract_frames(video_path: str, max_frames: int = 10) -> List[np.ndarray]:
-    """Extract frames from video with improved error handling"""
+def extract_frames(video_path: str, max_frames: int = 15) -> List[np.ndarray]:
+    """Extract frames from video with improved error handling and better sampling"""
     try:
         logger.info(f"Opening video file: {video_path}")
         cap = cv2.VideoCapture(video_path)
@@ -72,25 +82,61 @@ def extract_frames(video_path: str, max_frames: int = 10) -> List[np.ndarray]:
             
         frames = []
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
         
         if total_frames == 0:
             logger.error("Video file has no frames")
             raise HTTPException(status_code=400, detail="Video file has no frames")
             
-        logger.info(f"Total frames in video: {total_frames}")
+        logger.info(f"Total frames in video: {total_frames}, FPS: {fps}")
         
-        # Calculate frame sampling rate
-        step = max(1, total_frames // max_frames)
+        # Improved frame sampling strategy
+        if total_frames <= max_frames:
+            # If video is short, take all frames
+            step = 1
+        else:
+            # Take frames from beginning, middle, and end for better coverage
+            step = max(1, total_frames // max_frames)
         
-        for i in range(0, total_frames, step):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+        frame_positions = []
+        
+        # Get frames from different parts of the video
+        if total_frames <= max_frames:
+            frame_positions = list(range(total_frames))
+        else:
+            # Take frames from beginning (30%), middle (40%), and end (30%)
+            start_frames = int(max_frames * 0.3)
+            middle_frames = int(max_frames * 0.4)
+            end_frames = max_frames - start_frames - middle_frames
+            
+            # Beginning frames
+            for i in range(start_frames):
+                frame_positions.append(i * total_frames // start_frames)
+            
+            # Middle frames
+            middle_start = total_frames // 4
+            middle_end = 3 * total_frames // 4
+            for i in range(middle_frames):
+                frame_positions.append(middle_start + i * (middle_end - middle_start) // middle_frames)
+            
+            # End frames
+            for i in range(end_frames):
+                frame_positions.append(total_frames - (end_frames - i) * total_frames // end_frames)
+        
+        # Extract frames
+        for pos in frame_positions:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
             ret, frame = cap.read()
             
             if not ret:
-                logger.warning(f"Failed to read frame at position {i}")
+                logger.warning(f"Failed to read frame at position {pos}")
                 continue
                 
-            frames.append(frame)
+            # Skip very dark or very bright frames (likely to be poor quality)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            mean_brightness = np.mean(gray)
+            if 20 < mean_brightness < 235:  # Skip very dark or very bright frames
+                frames.append(frame)
             
             if len(frames) >= max_frames:
                 break
@@ -109,21 +155,40 @@ def extract_frames(video_path: str, max_frames: int = 10) -> List[np.ndarray]:
         raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")
 
 def detect_objects(frame: np.ndarray) -> List[Dict[str, Any]]:
-    """Detect objects in a single frame using YOLOv8"""
+    """Detect objects in a single frame using YOLOv8 with improved accuracy"""
     try:
-        # Run YOLOv8 inference on the frame
-        results = model(frame, verbose=False)[0]
+        # Preprocess frame for better detection
+        # Resize frame if it's too large (improves performance and accuracy)
+        height, width = frame.shape[:2]
+        if width > 1920 or height > 1080:
+            scale = min(1920/width, 1080/height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            frame = cv2.resize(frame, (new_width, new_height))
         
-        # Process results
+        # Run YOLOv8 inference with confidence threshold
+        results = model(frame, verbose=False, conf=0.3, iou=0.5)[0]  # Lower confidence threshold for more detections
+        
+        # Process results with better filtering
         detections = []
-        for r in results.boxes.data.tolist():
-            x1, y1, x2, y2, score, class_id = r
-            class_name = results.names[int(class_id)]
-            detections.append({
-                "class": class_name,
-                "confidence": float(score),
-                "bbox": [float(x1), float(y1), float(x2), float(y2)]
-            })
+        if results.boxes is not None and len(results.boxes) > 0:
+            for r in results.boxes.data.tolist():
+                x1, y1, x2, y2, score, class_id = r
+                
+                # Filter out very low confidence detections
+                if score < 0.3:
+                    continue
+                    
+                class_name = results.names[int(class_id)]
+                
+                # Filter out some common false positives
+                if class_name in ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle', 
+                                'tv', 'laptop', 'cell phone', 'dog', 'cat', 'chair', 'table']:
+                    detections.append({
+                        "class": class_name,
+                        "confidence": float(score),
+                        "bbox": [float(x1), float(y1), float(x2), float(y2)]
+                    })
         
         return detections
         
@@ -131,22 +196,83 @@ def detect_objects(frame: np.ndarray) -> List[Dict[str, Any]]:
         logger.error(f"Error detecting objects: {str(e)}")
         return []
 
-def infer_activity(detections):
-    classes = set(d['class'] for d in detections)
-    if 'person' in classes and 'tv' in classes:
-        return "person is watching TV"
-    if 'person' in classes and 'cell phone' in classes:
-        return "person is using a phone"
-    if 'person' in classes and 'dog' in classes:
-        return "person is with a dog"
-    if 'person' in classes and 'laptop' in classes:
-        return "person is using a laptop"
-    if 'person' in classes and 'car' in classes:
-        return "person is near a car"
-    if 'person' in classes and 'bicycle' in classes:
-        return "person is riding a bicycle"
-    # Add more rules as needed
-    return "No specific activity inferred"
+def infer_activity(all_detections):
+    """Infer activity from all detections with improved logic"""
+    if not all_detections:
+        return "No objects detected"
+    
+    # Count occurrences of each class
+    class_counts = {}
+    class_confidences = {}
+    
+    for detection in all_detections:
+        class_name = detection['class']
+        confidence = detection['confidence']
+        
+        if class_name not in class_counts:
+            class_counts[class_name] = 0
+            class_confidences[class_name] = []
+        
+        class_counts[class_name] += 1
+        class_confidences[class_name].append(confidence)
+    
+    # Calculate average confidence for each class
+    avg_confidences = {}
+    for class_name, confidences in class_confidences.items():
+        avg_confidences[class_name] = sum(confidences) / len(confidences)
+    
+    # Activity inference with confidence thresholds
+    activities = []
+    
+    # Person-related activities
+    if 'person' in class_counts and class_counts['person'] >= 2:  # At least 2 person detections
+        person_conf = avg_confidences.get('person', 0)
+        
+        if person_conf > 0.5:  # High confidence person detection
+            if 'tv' in class_counts and class_counts['tv'] >= 1:
+                activities.append("Person watching TV")
+            if 'laptop' in class_counts and class_counts['laptop'] >= 1:
+                activities.append("Person using laptop")
+            if 'cell phone' in class_counts and class_counts['cell phone'] >= 1:
+                activities.append("Person using phone")
+            if 'dog' in class_counts and class_counts['dog'] >= 1:
+                activities.append("Person with dog")
+            if 'cat' in class_counts and class_counts['cat'] >= 1:
+                activities.append("Person with cat")
+            if 'car' in class_counts and class_counts['car'] >= 1:
+                activities.append("Person near car")
+            if 'bicycle' in class_counts and class_counts['bicycle'] >= 1:
+                activities.append("Person with bicycle")
+            if 'chair' in class_counts and class_counts['chair'] >= 1:
+                activities.append("Person sitting")
+            if 'table' in class_counts and class_counts['table'] >= 1:
+                activities.append("Person at table")
+    
+    # Vehicle-related activities
+    if 'car' in class_counts and class_counts['car'] >= 2:
+        activities.append("Multiple cars present")
+    if 'truck' in class_counts and class_counts['truck'] >= 1:
+        activities.append("Truck present")
+    if 'bus' in class_counts and class_counts['bus'] >= 1:
+        activities.append("Bus present")
+    if 'motorcycle' in class_counts and class_counts['motorcycle'] >= 1:
+        activities.append("Motorcycle present")
+    
+    # Pet-related activities
+    if 'dog' in class_counts and class_counts['dog'] >= 2:
+        activities.append("Multiple dogs present")
+    if 'cat' in class_counts and class_counts['cat'] >= 2:
+        activities.append("Multiple cats present")
+    
+    # If no specific activities found, return general description
+    if not activities:
+        detected_objects = [f"{count} {class_name}" for class_name, count in class_counts.items() if count > 0]
+        if detected_objects:
+            return f"Detected: {', '.join(detected_objects)}"
+        else:
+            return "No specific activity detected"
+    
+    return "; ".join(activities)
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
@@ -180,7 +306,7 @@ async def predict(file: UploadFile = File(...)):
 
         try:
             # Extract frames
-            frames = extract_frames(temp_path, max_frames=10)
+            frames = extract_frames(temp_path, max_frames=15)
             logger.info(f"Successfully extracted {len(frames)} frames")
             
             # Detect objects in frames
@@ -194,24 +320,39 @@ async def predict(file: UploadFile = File(...)):
                     logger.warning(f"No objects detected in frame {i+1}")
                 logger.info(f"Processed frame {i+1}/{len(frames)}")
 
-            # Get most common detections
+            # Get most common detections with improved processing
             if all_detections:
                 from collections import Counter
                 class_counts = Counter(d["class"] for d in all_detections)
-                most_common_objects = class_counts.most_common(3)  # Top 3 detected objects
+                
+                # Calculate average confidence for each class
+                class_confidences = {}
+                for detection in all_detections:
+                    class_name = detection["class"]
+                    if class_name not in class_confidences:
+                        class_confidences[class_name] = []
+                    class_confidences[class_name].append(detection["confidence"])
+                
+                # Get top detected objects (up to 5 instead of 3)
+                most_common_objects = class_counts.most_common(5)
                 
                 result = {
                     "detections": [
                         {
                             "class": obj_class,
                             "count": count,
-                            "confidence": sum(d["confidence"] for d in all_detections if d["class"] == obj_class) / count
+                            "confidence": sum(class_confidences[obj_class]) / len(class_confidences[obj_class]),
+                            "total_detections": len(all_detections)
                         }
                         for obj_class, count in most_common_objects
                     ]
                 }
+                
                 # Infer activity
                 result["activity"] = infer_activity(all_detections)
+                result["frames_processed"] = len(frames)
+                result["total_objects_detected"] = len(all_detections)
+                
                 logger.info(f"Final detections: {result}")
                 return result
             else:
@@ -230,6 +371,12 @@ async def predict(file: UploadFile = File(...)):
                     logger.info("Temporary file removed")
             except Exception as e:
                 logger.warning(f"Error removing temporary file: {str(e)}")
+                # Try to remove with a different approach if needed
+                try:
+                    import shutil
+                    shutil.rmtree(temp_path, ignore_errors=True)
+                except:
+                    pass
             
     except HTTPException as he:
         raise he
