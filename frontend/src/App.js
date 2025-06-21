@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 import { CloudUpload as CloudUploadIcon } from "@mui/icons-material";
 import axios from "axios";
+import BgImage from "./bg.png";
 import Logo from "./quantai_logo.png";
 
 function Header({ onHowItWorksClick }) {
@@ -62,7 +63,7 @@ function Header({ onHowItWorksClick }) {
           sx={{
             color: "#fff",
             fontWeight: 700,
-            ml: "1px",
+            ml: "-15px",
             textShadow: "0 2px 8px #0008",
           }}
         >
@@ -70,16 +71,21 @@ function Header({ onHowItWorksClick }) {
         </Typography>
       </Box>
       <Button
-        variant="text"
+        variant="contained"
         onClick={onHowItWorksClick}
         sx={{
+          background: "#2196f3",
           color: "#fff",
-          fontWeight: 600,
+          fontWeight: 700,
           fontSize: 18,
           textTransform: "none",
-          background: "rgba(0,0,0,0.15)",
           borderRadius: 2,
-          px: 2,
+          px: 3,
+          py: 1,
+          boxShadow: "0 2px 12px #2196f355",
+          "&:hover": {
+            background: "#42a5f5",
+          },
         }}
       >
         How it works
@@ -208,13 +214,16 @@ function HowItWorksModal({ open, onClose }) {
           onClick={onClose}
           variant="contained"
           sx={{
-            background: "linear-gradient(90deg, #6a5af9 0%, #f857a6 100%)",
+            background: "linear-gradient(90deg, #2196f3 0%, #8f00ff 100%)",
             color: "white",
             px: 4,
             py: 1.5,
             borderRadius: 2,
             fontWeight: 600,
             textTransform: "none",
+            "&:hover": {
+              background: "linear-gradient(90deg, #42a5f5 0%, #b266ff 100%)",
+            },
           }}
         >
           Got it!
@@ -232,7 +241,10 @@ function WelcomePage({ onGetStarted }) {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        background: "linear-gradient(135deg, #181c2f 0%, #2d174c 100%)",
+        backgroundImage: `url(${BgImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -271,11 +283,14 @@ function WelcomePage({ onGetStarted }) {
             py: 1.5,
             fontSize: 22,
             fontWeight: 700,
-            background: "linear-gradient(90deg, #6a5af9 0%, #f857a6 100%)",
+            background: "linear-gradient(90deg, #2196f3 0%, #8f00ff 100%)",
             color: "#fff",
             borderRadius: 3,
             boxShadow: "0 4px 32px #0008",
             textTransform: "none",
+            "&:hover": {
+              background: "linear-gradient(90deg, #42a5f5 0%, #b266ff 100%)",
+            },
           }}
           onClick={onGetStarted}
         >
@@ -369,7 +384,10 @@ function App() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        background: "linear-gradient(135deg, #181c2f 0%, #2d174c 100%)",
+        backgroundImage: `url(${BgImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         position: "relative",
         display: "flex",
         alignItems: "center",
@@ -429,7 +447,17 @@ function App() {
                 variant="contained"
                 component="span"
                 startIcon={<CloudUploadIcon />}
-                sx={{ fontWeight: 600, letterSpacing: 1 }}
+                sx={{
+                  fontWeight: 600,
+                  letterSpacing: 1,
+                  background:
+                    "linear-gradient(90deg, #2196f3 0%, #8f00ff 100%)",
+                  color: "#fff",
+                  "&:hover": {
+                    background:
+                      "linear-gradient(90deg, #42a5f5 0%, #b266ff 100%)",
+                  },
+                }}
               >
                 Select Video
               </Button>
@@ -444,7 +472,20 @@ function App() {
               color="primary"
               onClick={handleUpload}
               disabled={!file || loading}
-              sx={{ mt: 2, width: "100%" }}
+              sx={{
+                mt: 2,
+                width: "100%",
+                background: "linear-gradient(90deg, #2196f3 0%, #8f00ff 100%)",
+                color: "#fff",
+                "&:hover": {
+                  background:
+                    "linear-gradient(90deg, #42a5f5 0%, #b266ff 100%)",
+                },
+                "&:disabled": {
+                  background: "#222",
+                  color: "#888",
+                },
+              }}
             >
               {loading ? <CircularProgress size={24} /> : "Analyze Video"}
             </Button>
