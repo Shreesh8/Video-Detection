@@ -321,7 +321,7 @@ function App() {
 
     try {
       const response = await axios.post(
-        "http://localhost:8001/predict",
+        "https://video-detection-3.onrender.com/",
         formData,
         {
           headers: {
