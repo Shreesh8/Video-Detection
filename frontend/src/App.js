@@ -27,6 +27,7 @@ import {
 import { CloudUpload as CloudUploadIcon } from "@mui/icons-material";
 import axios from "axios";
 import Logo from "./quantai_logo.png";
+import BgImage from "./bg.png";
 
 function Header({ onHowItWorksClick }) {
   return (
@@ -233,7 +234,10 @@ function WelcomePage({ onGetStarted }) {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        background: "linear-gradient(135deg, #181c2f 0%, #2d174c 100%)",
+        backgroundImage: `url(${BgImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -370,7 +374,10 @@ function App() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        background: "linear-gradient(135deg, #181c2f 0%, #2d174c 100%)",
+        backgroundImage: `url(${BgImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         position: "relative",
         display: "flex",
         alignItems: "center",
