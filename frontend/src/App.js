@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Container,
   Box,
@@ -28,6 +28,8 @@ import { CloudUpload as CloudUploadIcon } from "@mui/icons-material";
 import axios from "axios";
 import Logo from "./quantai_logo.png";
 import BgImage from "./bg.png";
+
+const BACKEND_HEALTH_URL = "https://video-detection-4.onrender.com/health";
 
 function Header({ onHowItWorksClick }) {
   return (
@@ -364,6 +366,16 @@ function App() {
 
   // Debug log for state
   console.log("Detections:", detections, "Activity:", activity);
+
+  // Keep-alive effect for Render backend
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch(BACKEND_HEALTH_URL)
+        .then(() => {})
+        .catch(() => {});
+    }, 30000); // 30 seconds
+    return () => clearInterval(interval);
+  }, []);
 
   if (showWelcome) {
     return <WelcomePage onGetStarted={() => setShowWelcome(false)} />;
